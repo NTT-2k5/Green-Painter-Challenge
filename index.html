@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Grid Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            touch-action: none; /* Prevent browser handling of touch gestures */
+        }
+        
+        .container {
+            text-align: center;
+        }
+        
+        .grid-container {
+            display: inline-block;
+            margin: 12px;
+            border: 2px solid #333;
+            padding: 5px;
+            background-color: #fff;
+            touch-action: none; /* Prevent browser handling of touch gestures */
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(7, 50px);
+            grid-template-rows: repeat(7, 50px);
+            gap: 2px;
+        }
+        
+        .cell {
+            width: 50px;
+            height: 50px;
+            background-color: #bfbfbf;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            user-select: none;
+        }
+        
+        .game-info {
+            margin-bottom: 20px;
+        }
+        
+        .game-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .level-display {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        
+        .game-message {
+            font-size: 18px;
+            min-height: 24px;
+            margin: 10px 0;
+        }
+        
+        .timer-display {
+            font-size: 16px;
+            margin: 5px 0;
+            font-family: monospace;
+        }
+        
+        .time-results {
+            font-size: 16px;
+            margin: 5px 0;
+            font-family: monospace;
+        }
+        
+        .buttons-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .legend {
+            display: flex;
+            margin-top: 10px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            max-width: 400px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 10px;
+        }
+        
+        .color-sample {
+            width: 20px;
+            height: 20px;
+            margin-right: 5px;
+        }
+        
+        .instruction {
+            font-size: 14px;
+            margin: 10px 0;
+            color: #555;
+        }
+        
+        /* Media queries for responsive design */
+        @media (max-width: 480px) {
+            .grid {
+                grid-template-columns: repeat(7, 40px);
+                grid-template-rows: repeat(7, 40px);
+            }
+            
+            .cell {
+                width: 40px;
+                height: 40px;
+                font-size: 20px;
+            }
+        }
+        
+        @media (max-width: 380px) {
+            .grid {
+                grid-template-columns: repeat(7, 35px);
+                grid-template-rows: repeat(7, 35px);
+            }
+            
+            .cell {
+                width: 35px;
+                height: 35px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="game-info">
+            <div class="game-title">Color Grid Game</div>
+            <div class="level-display">Level <span id="level">1</span> of 3</div>
+            <div class="game-message" id="message"></div>
+            <div class="timer-display">Time: <span id="timer">00:00.00</span></div>
+            <div class="time-results" id="timeResults"></div>
+        </div>
+        
+        <div class="grid-container">
+            <div class="grid" id="grid"></div>
+        </div>
+        
+        <div class="legend" id="legend"></div>
+        
+        <div class="instruction">Fill the entire board with Dark Green<br/>Arrow / WASD / Swipe to move your character</div>
+
+        <div class="buttons-container">
+            <button id="nextLevel" class="hidden">Play Next Level</button>
+            <button id="restartGame" class="hidden">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        // Game state
+        const game = {
+            grid: [],
+            player: { row: 3, col: 3 }, // 0-indexed internally (4,4 for display)
+            ghosts: [],
+            level: 1,
+            gameOver: false,
+            won: false,
+            ghostInterval: null,
+            moveIntervals: {},
+            totalCells: 49,
+            coloredCells: 0,
+            touchStartX: null,
+            touchStartY: null,
+            // Timer properties
+            timerInterval: null,
+            startTime: 0,
+            currentTime: 0,
+            levelStartTime: 0,
+            levelTimes: [],
+            cumulativeTime: 0,
+            isTimerRunning: false
+        };
+
+        // Color schemes for different levels
+        const colors = {
+            gray: "#bfbfbf",
+            lightGreen: "#e2efd9",
+            mediumGreen: "#c5e0b3",
+            green: "#70ad47"
+        };
+
+        // Level color transition definitions
+        const levelSchemes = {
+            1: [
+                { from: colors.gray, to: colors.green }
+            ],
+            2: [
+                { from: colors.gray, to: colors.mediumGreen },
+                { from: colors.mediumGreen, to: colors.green }
+            ],
+            3: [
+                { from: colors.gray, to: colors.lightGreen },
+                { from: colors.lightGreen, to: colors.mediumGreen },
+                { from: colors.mediumGreen, to: colors.green }
+            ]
+        };
+
+        // Game elements
+        const elements = {
+            grid: document.getElementById('grid'),
+            level: document.getElementById('level'),
+            message: document.getElementById('message'),
+            nextLevel: document.getElementById('nextLevel'),
+            restartGame: document.getElementById('restartGame'),
+            legend: document.getElementById('legend'),
+            timer: document.getElementById('timer'),
+            timeResults: document.getElementById('timeResults')
+        };
+
+        // Initialize the game
+        function initGame() {
+            createGrid();
+            updateLegend();
+            placePlayer();
+            addEventListeners();
+            startGhostSpawner();
+            startTimer();
+        }
+        
+        // Timer functions
+        function startTimer() {
+            stopTimer(); // Clear any existing timers
+            
+            game.startTime = Date.now();
+            game.levelStartTime = Date.now();
+            game.isTimerRunning = true;
+            
+            game.timerInterval = setInterval(updateTimer, 10); // Update every 10ms for centisecond precision
+        }
+        
+        function stopTimer() {
+            if (game.timerInterval) {
+                clearInterval(game.timerInterval);
+                game.timerInterval = null;
+            }
+            game.isTimerRunning = false;
+        }
+        
+        function updateTimer() {
+            if (!game.isTimerRunning) return;
+            
+            game.currentTime = Date.now() - game.startTime;
+            
+            // Format time as MM:SS.CC (minutes, seconds, centiseconds)
+            const totalCentiseconds = Math.floor(game.currentTime / 10);
+            const centiseconds = totalCentiseconds % 100;
+            const totalSeconds = Math.floor(totalCentiseconds / 100);
+            const seconds = totalSeconds % 60;
+            const minutes = Math.floor(totalSeconds / 60);
+            
+            elements.timer.textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
+        }
+        
+        function recordLevelTime() {
+            const levelTime = Date.now() - game.levelStartTime;
+            game.levelTimes[game.level - 1] = levelTime;
+            game.cumulativeTime = game.levelTimes.reduce((acc, time) => acc + time, 0);
+            
+            // Format times
+            const formatTime = (time) => {
+                const totalCentiseconds = Math.floor(time / 10);
+                const centiseconds = totalCentiseconds % 100;
+                const totalSeconds = Math.floor(totalCentiseconds / 100);
+                const seconds = totalSeconds % 60;
+                const minutes = Math.floor(totalSeconds / 60);
+                
+                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
+            };
+            
+            // Display the level time and cumulative time
+            elements.timeResults.innerHTML = `
+                Total Time: ${formatTime(game.cumulativeTime)}
+            `;
+        }
+
+        // Create the grid
+        function createGrid() {
+            elements.grid.innerHTML = '';
+            game.grid = [];
+            game.coloredCells = 0;
+            
+            for (let row = 0; row < 7; row++) {
+                game.grid[row] = [];
+                for (let col = 0; col < 7; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.style.backgroundColor = colors.gray;
+                    
+                    game.grid[row][col] = {
+                        element: cell,
+                        color: colors.gray,
+                        hasGhost: false,
+                        hasPlayer: false
+                    };
+                    
+                    elements.grid.appendChild(cell);
+                }
+            }
+        }
+
+        // Update the legend based on current level
+        function updateLegend() {
+            elements.legend.innerHTML = '';
+            
+            // Create a single color chain based on level
+            const legendItem = document.createElement('div');
+            legendItem.className = 'legend-item';
+            
+            // Start with gray
+            const grayColor = document.createElement('div');
+            grayColor.className = 'color-sample';
+            grayColor.style.backgroundColor = colors.gray;
+            legendItem.appendChild(grayColor);
+            
+            // Add appropriate color chain based on level
+            if (game.level >= 3) {
+                const arrow1 = document.createTextNode(' → ');
+                legendItem.appendChild(arrow1);
+
+                const lightGreen = document.createElement('div');
+                lightGreen.className = 'color-sample';
+                lightGreen.style.backgroundColor = colors.lightGreen;
+                legendItem.appendChild(lightGreen);
+            }
+            
+            if (game.level >= 2) {
+                const arrow2 = document.createTextNode(' → ');
+                legendItem.appendChild(arrow2);
+                
+                const mediumGreen = document.createElement('div');
+                mediumGreen.className = 'color-sample';
+                mediumGreen.style.backgroundColor = colors.mediumGreen;
+                legendItem.appendChild(mediumGreen);
+            }
+            
+            // All levels end with green
+            const arrowFinal = document.createTextNode(' → ');
+            legendItem.appendChild(arrowFinal);
+            
+            const greenColor = document.createElement('div');
+            greenColor.className = 'color-sample';
+            greenColor.style.backgroundColor = colors.green;
+            legendItem.appendChild(greenColor);
+            
+            elements.legend.appendChild(legendItem);
+            
+            // Add player and ghost to legend
+            const playerItem = document.createElement('div');
+            playerItem.className = 'legend-item';
+            playerItem.innerHTML = '<div class="color-sample" style="display: flex; justify-content: center; align-items: center;">😀</div> Player';
+            elements.legend.appendChild(playerItem);
+            
+            const ghostItem = document.createElement('div');
+            ghostItem.className = 'legend-item';
+            ghostItem.innerHTML = '<div class="color-sample" style="display: flex; justify-content: center; align-items: center;">👻</div> Ghost';
+            elements.legend.appendChild(ghostItem);
+        }
+
+        // Place the player on the grid
+        function placePlayer() {
+            game.player = { row: 3, col: 3 }; // Center of 7x7 grid (0-indexed)
+            updateCell(game.player.row, game.player.col, true);
+        }
+
+        // Update a cell (change color, place/remove player or ghost)
+        function updateCell(row, col, isPlayer = false, isGhost = false) {
+            const cell = game.grid[row][col];
+            
+            // Update cell emoji content
+            cell.element.textContent = '';
+            if (isPlayer) {
+                cell.hasPlayer = true;
+                cell.element.textContent = game.gameOver && !game.won ? '😵' : (game.won ? '😎' : '😀');
+            } else {
+                cell.hasPlayer = false;
+            }
+            
+            if (isGhost) {
+                cell.hasGhost = true;
+                if (!cell.hasPlayer) {
+                    cell.element.textContent = '👻';
+                }
+            } else {
+                cell.hasGhost = false;
+            }
+            
+            // Change color if player stepped on it (and game is not over)
+            if (isPlayer && !game.gameOver) {
+                const scheme = levelSchemes[game.level];
+                for (let i = scheme.length - 1; i >= 0; i--) {
+                    if (cell.color === scheme[i].from) {
+                        cell.color = scheme[i].to;
+                        cell.element.style.backgroundColor = cell.color;
+                        
+                        // If this turned green, increment our count
+                        if (cell.color === colors.green && scheme[i].from !== colors.green) {
+                            game.coloredCells++;
+                            checkWinCondition();
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Move the player
+        function movePlayer(direction) {
+            if (game.gameOver) return;
+            
+            let newRow = game.player.row;
+            let newCol = game.player.col;
+            
+            switch (direction) {
+                case 'up':
+                    newRow = Math.max(0, game.player.row - 1);
+                    break;
+                case 'down':
+                    newRow = Math.min(6, game.player.row + 1);
+                    break;
+                case 'left':
+                    newCol = Math.max(0, game.player.col - 1);
+                    break;
+                case 'right':
+                    newCol = Math.min(6, game.player.col + 1);
+                    break;
+            }
+            
+            // Remove player from old cell
+            updateCell(game.player.row, game.player.col, false);
+            
+            // Update player position
+            game.player.row = newRow;
+            game.player.col = newCol;
+            
+            // Add player to new cell and check for ghost collision
+            const newCell = game.grid[newRow][newCol];
+            if (newCell.hasGhost) {
+                gameOver(false);
+            }
+            
+            updateCell(newRow, newCol, true);
+        }
+
+        // Check if all cells are turned green
+        function checkWinCondition() {
+            if (game.coloredCells === game.totalCells) {
+                game.won = true;
+                game.gameOver = true;
+                
+                // Stop the timer and record level time
+                stopTimer();
+                recordLevelTime();
+                
+                // Show win message and next level button
+                elements.message.textContent = "You win! All cells are colored!";
+                
+                // Update player emoji to cool sunglasses
+                updateCell(game.player.row, game.player.col, true);
+                
+                // Show appropriate button based on level
+                if (game.level < 3) {
+                    elements.nextLevel.classList.remove('hidden');
+                } else {
+                    elements.message.textContent = "Congratulations! You've completed all levels!";
+                    elements.restartGame.classList.remove('hidden');
+                }
+                
+                // Stop ghost spawning
+                clearInterval(game.ghostInterval);
+                
+                // Stop all ghost movements
+                Object.keys(game.moveIntervals).forEach(id => {
+                    clearInterval(game.moveIntervals[id]);
+                });
+            }
+        }
+
+        // End the game (win or lose)
+        function gameOver(win) {
+            game.gameOver = true;
+            game.won = win;
+            
+            // Stop the timer
+            stopTimer();
+            
+            if (!win) {
+                elements.message.textContent = "Game Over! A ghost caught you!";
+                elements.restartGame.classList.remove('hidden');
+                
+                // Update player emoji to dead face
+                updateCell(game.player.row, game.player.col, true);
+                
+                // Stop ghost spawning
+                clearInterval(game.ghostInterval);
+                
+                // Stop all ghost movements
+                Object.keys(game.moveIntervals).forEach(id => {
+                    clearInterval(game.moveIntervals[id]);
+                });
+            }
+        }
+
+        // Start spawning ghosts every 5 seconds
+        function startGhostSpawner() {
+            // Clear any existing ghosts and intervals
+            game.ghosts = [];
+            clearInterval(game.ghostInterval);
+            Object.keys(game.moveIntervals).forEach(id => {
+                clearInterval(game.moveIntervals[id]);
+            });
+            game.moveIntervals = {};
+            
+            // Start spawning ghosts
+            game.ghostInterval = setInterval(() => {
+                if (!game.gameOver) {
+                    spawnGhost();
+                }
+            }, 5000);
+        }
+
+        // Spawn a ghost at one of the corners
+        function spawnGhost() {
+            const corners = [
+                { row: 0, col: 0 }, // Top-left (1,1 in 1-indexed)
+                { row: 0, col: 6 }, // Top-right (1,7 in 1-indexed)
+                { row: 6, col: 0 }, // Bottom-left (7,1 in 1-indexed)
+                { row: 6, col: 6 }  // Bottom-right (7,7 in 1-indexed)
+            ];
+            
+            // Shuffle corners to pick a random one
+            const shuffledCorners = [...corners].sort(() => Math.random() - 0.5);
+            
+            // Try each corner until we find one without a ghost
+            for (const corner of shuffledCorners) {
+                const cell = game.grid[corner.row][corner.col];
+                if (!cell.hasGhost && !cell.hasPlayer) {
+                    // Create a new ghost
+                    const ghostId = Date.now(); // Unique ID for the ghost
+                    const ghost = {
+                        id: ghostId,
+                        row: corner.row,
+                        col: corner.col
+                    };
+                    
+                    // Add to ghosts array
+                    game.ghosts.push(ghost);
+                    
+                    // Place ghost on grid
+                    updateCell(ghost.row, ghost.col, false, true);
+                    
+                    // Start ghost movement
+                    game.moveIntervals[ghostId] = setInterval(() => {
+                        moveGhost(ghost);
+                    }, 600);
+                    
+                    break;
+                }
+            }
+        }
+
+        // Move a ghost towards the player
+        function moveGhost(ghost) {
+            if (game.gameOver) return;
+            
+            // Remove ghost from current cell
+            updateCell(ghost.row, ghost.col, game.grid[ghost.row][ghost.col].hasPlayer, false);
+            
+            // Calculate distances in each direction
+            const moves = [
+                { dr: -1, dc: 0, direction: 'up' },
+                { dr: 1, dc: 0, direction: 'down' },
+                { dr: 0, dc: -1, direction: 'left' },
+                { dr: 0, dc: 1, direction: 'right' }
+            ];
+            
+            // Calculate possible moves and their distances to player
+            const possibleMoves = moves
+                .map(move => {
+                    const newRow = ghost.row + move.dr;
+                    const newCol = ghost.col + move.dc;
+                    
+                    // Check if the move is valid (within grid and no ghost there)
+                    if (newRow >= 0 && newRow < 7 && newCol >= 0 && newCol < 7) {
+                        const cell = game.grid[newRow][newCol];
+                        if (!cell.hasGhost) {
+                            // Calculate Manhattan distance to player
+                            const distance = Math.abs(newRow - game.player.row) + Math.abs(newCol - game.player.col);
+                            return {
+                                row: newRow,
+                                col: newCol,
+                                distance: distance,
+                                direction: move.direction
+                            };
+                        }
+                    }
+                    return null;
+                })
+                .filter(move => move !== null);
+            
+            // Sort by distance (closest to player first)
+            possibleMoves.sort((a, b) => a.distance - b.distance);
+            
+            // Get the best move (closest to player)
+            const bestMove = possibleMoves.length > 0 ? possibleMoves[0] : null;
+            
+            if (bestMove) {
+                // Update ghost position
+                ghost.row = bestMove.row;
+                ghost.col = bestMove.col;
+                
+                // Check if ghost caught the player
+                if (ghost.row === game.player.row && ghost.col === game.player.col) {
+                    updateCell(ghost.row, ghost.col, true, true);
+                    gameOver(false);
+                } else {
+                    updateCell(ghost.row, ghost.col, false, true);
+                }
+            }
+        }
+
+        // Handle swipe gestures
+        function handleTouchStart(e) {
+            if (game.gameOver) return;
+            
+            // Store the initial touch position
+            game.touchStartX = e.touches[0].clientX;
+            game.touchStartY = e.touches[0].clientY;
+        }
+
+        function handleTouchMove(e) {
+            // Prevent scrolling when swiping inside the game area
+            e.preventDefault();
+        }
+
+        function handleTouchEnd(e) {
+            if (game.gameOver || game.touchStartX === null || game.touchStartY === null) return;
+            
+            // Get the final touch position
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            
+            // Calculate the horizontal and vertical distance of the swipe
+            const dx = touchEndX - game.touchStartX;
+            const dy = touchEndY - game.touchStartY;
+            
+            // Determine if the swipe was primarily horizontal or vertical
+            // and had enough distance to be considered a swipe
+            const minSwipeDistance = 30; // minimum swipe distance in pixels
+            
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal swipe
+                if (Math.abs(dx) > minSwipeDistance) {
+                    if (dx > 0) {
+                        movePlayer('right');
+                    } else {
+                        movePlayer('left');
+                    }
+                }
+            } else {
+                // Vertical swipe
+                if (Math.abs(dy) > minSwipeDistance) {
+                    if (dy > 0) {
+                        movePlayer('down');
+                    } else {
+                        movePlayer('up');
+                    }
+                }
+            }
+            
+            // Reset touch start coordinates
+            game.touchStartX = null;
+            game.touchStartY = null;
+        }
+
+        // Add event listeners for keyboard, buttons, and touch
+        function addEventListeners() {
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                if (game.gameOver && e.key === 'Enter') {
+                    if (game.won && game.level < 3) {
+                        nextLevel();
+                    } else {
+                        restartGame();
+                    }
+                    return;
+                }
+                
+                if (!game.gameOver) {
+                    switch (e.key) {
+                        case 'ArrowUp':
+                        case 'w':
+                            movePlayer('up');
+                            e.preventDefault();
+                            break;
+                        case 'ArrowDown':
+                        case 's':
+                            movePlayer('down');
+                            e.preventDefault();
+                            break;
+                        case 'ArrowLeft':
+                        case 'a':
+                            movePlayer('left');
+                            e.preventDefault();
+                            break;
+                        case 'ArrowRight':
+                        case 'd':
+                            movePlayer('right');
+                            e.preventDefault();
+                            break;
+                    }
+                }
+            });
+            
+            // Button click events
+            elements.nextLevel.addEventListener('click', nextLevel);
+            elements.restartGame.addEventListener('click', restartGame);
+            
+            // Touch controls for the grid
+            const gridContainer = document.querySelector('.grid-container');
+            gridContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
+            gridContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+            gridContainer.addEventListener('touchend', handleTouchEnd);
+        }
+
+        // Advance to the next level
+        function nextLevel() {
+            game.level++;
+            elements.level.textContent = game.level;
+            elements.nextLevel.classList.add('hidden');
+            elements.message.textContent = ``;
+            elements.timeResults.innerHTML = '';
+            
+            // Reset game state
+            game.gameOver = false;
+            game.won = false;
+            game.ghosts = [];
+            
+            createGrid();
+            updateLegend();
+            placePlayer();
+            startGhostSpawner();
+            
+            // Reset level timer
+            game.levelStartTime = Date.now();
+            startTimer();
+        }
+
+        // Restart the game from level 1
+        function restartGame() {
+            game.level = 1;
+            elements.level.textContent = game.level;
+            elements.restartGame.classList.add('hidden');
+            elements.message.textContent = ``;
+            elements.timeResults.innerHTML = '';
+            
+            // Reset game state
+            game.gameOver = false;
+            game.won = false;
+            game.ghosts = [];
+            game.levelTimes = [];
+            game.cumulativeTime = 0;
+            
+            createGrid();
+            updateLegend();
+            placePlayer();
+            startGhostSpawner();
+            
+            // Reset timer
+            startTimer();
+        }
+
+        // Initialize the game when the page loads
+        window.addEventListener('load', initGame);
+    </script>
+</body>
+</html>
