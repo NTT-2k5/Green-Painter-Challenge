@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ghost vs. Painter!</title>
+    <title>Green Painter Challenge!</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -16,11 +16,11 @@
             background-color: #f0f0f0;
             touch-action: none; /* Prevent browser handling of touch gestures */
         }
-        
+
         .container {
             text-align: center;
         }
-        
+
         .grid-container {
             display: inline-block;
             margin: 12px;
@@ -29,14 +29,14 @@
             background-color: #fff;
             touch-action: none; /* Prevent browser handling of touch gestures */
         }
-        
+
         .grid {
             display: grid;
             grid-template-columns: repeat(7, 50px);
             grid-template-rows: repeat(7, 50px);
             gap: 2px;
         }
-        
+
         .cell {
             width: 50px;
             height: 50px;
@@ -47,46 +47,46 @@
             font-size: 24px;
             user-select: none;
         }
-        
+
         .game-info {
             margin-bottom: 20px;
         }
-        
+
         .game-title {
             font-size: 24px;
             font-weight: bold;
             margin-bottom: 10px;
         }
-        
+
         .level-display {
             font-size: 18px;
             margin-bottom: 5px;
         }
-        
+
         .game-message {
             font-size: 18px;
             min-height: 24px;
             margin: 10px 0;
         }
-        
+
         .timer-display {
             font-size: 16px;
             margin: 5px 0;
             font-family: monospace;
         }
-        
+
         .time-results {
             font-size: 16px;
             margin: 5px 0;
             font-family: monospace;
         }
-        
+
         .buttons-container {
             display: flex;
             justify-content: center;
             margin-top: 10px;
         }
-        
+
         button {
             padding: 8px 16px;
             font-size: 16px;
@@ -97,91 +97,98 @@
             cursor: pointer;
             margin: 10px;
         }
-        
+
         button:hover {
             background-color: #45a049;
         }
-        
+
         .hidden {
             display: none;
         }
-        
+
         .legend {
             display: flex;
             margin-top: 10px;
             justify-content: center;
             align-items: center;
             flex-wrap: wrap;
-            max-width: 400px;
+            max-width: 500px; /* Adjusted max-width */
         }
-        
+
         .legend-item {
             display: flex;
             align-items: center;
             margin: 5px 10px;
         }
-        
+
         .color-sample {
             width: 20px;
             height: 20px;
             margin-right: 5px;
+            display: flex; /* Added to center emojis */
+            justify-content: center; /* Added */
+            align-items: center; /* Added */
+            font-size: 18px; /* Added for emoji size */
         }
-        
+
         .instruction {
             font-size: 14px;
             margin: 10px 0;
             color: #555;
         }
-        
+
         /* Media queries for responsive design */
         @media (max-width: 480px) {
             .grid {
                 grid-template-columns: repeat(7, 40px);
                 grid-template-rows: repeat(7, 40px);
             }
-            
+
             .cell {
                 width: 40px;
                 height: 40px;
                 font-size: 20px;
             }
+            .color-sample { font-size: 16px; }
         }
-        
+
         @media (max-width: 380px) {
             .grid {
                 grid-template-columns: repeat(7, 35px);
                 grid-template-rows: repeat(7, 35px);
             }
-            
+
             .cell {
                 width: 35px;
                 height: 35px;
                 font-size: 18px;
             }
+             .color-sample { font-size: 14px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="game-info">
-            <div class="game-title">Ghost vs. Painter!</div>
+            <div class="game-title" id="gameTitle"></div>
             <div class="level-display">Level <span id="level">1</span> of 3</div>
             <div class="game-message" id="message"></div>
             <div class="timer-display">Time: <span id="timer">00:00.00</span></div>
             <div class="time-results" id="timeResults"></div>
         </div>
-        
+
         <div class="grid-container">
             <div class="grid" id="grid"></div>
         </div>
-        
+
         <div class="legend" id="legend"></div>
-        
+
         <div class="instruction">Paint the entire board with Dark Green<br/>Arrow / WASD / Swipe to move your character</div>
 
         <div class="buttons-container">
             <button id="nextLevel" class="hidden">Play Next Level</button>
             <button id="restartGame" class="hidden">Play Again</button>
+            <button id="playHardMode" class="hidden">Play Again in Hard Mode</button>
         </div>
     </div>
 
@@ -191,15 +198,21 @@
             grid: [],
             player: { row: 3, col: 3 }, // 0-indexed internally (4,4 for display)
             ghosts: [],
+            clown: null, // Holds the clown object { id, row, col } or null
             level: 1,
             gameOver: false,
             won: false,
             ghostInterval: null,
-            moveIntervals: {},
+            clownInterval: null, // Interval for clown movement
+            moveIntervals: {}, // Ghost move intervals { ghostId: intervalId }
             totalCells: 49,
             coloredCells: 0,
             touchStartX: null,
             touchStartY: null,
+            playerMoves: 0, // Counter for player moves
+            nextClownSpawnMove: 30, // Move count for the next auto-spawn
+            clownSpawnCounter: 20, // Moves between subsequent auto-spawns
+            isClownActive: false, // Flag if a clown is currently on the board
             // Timer properties
             timerInterval: null,
             startTime: 0,
@@ -207,7 +220,8 @@
             levelStartTime: 0,
             levelTimes: [],
             cumulativeTime: 0,
-            isTimerRunning: false
+            isTimerRunning: false,
+            isHardMode: false // New state for Hard Mode
         };
 
         // Color schemes for different levels
@@ -234,13 +248,31 @@
             ]
         };
 
+        // Reverse color transition definitions for Hard Mode
+        const reverseLevelSchemes = {
+            1: [
+                { from: colors.green, to: colors.gray }
+            ],
+            2: [
+                { from: colors.green, to: colors.mediumGreen },
+                { from: colors.mediumGreen, to: colors.gray }
+            ],
+            3: [
+                { from: colors.green, to: colors.mediumGreen },
+                { from: colors.mediumGreen, to: colors.lightGreen },
+                { from: colors.lightGreen, to: colors.gray }
+            ]
+        };
+
         // Game elements
         const elements = {
+            gameTitle: document.getElementById('gameTitle'), // Get the game title element
             grid: document.getElementById('grid'),
             level: document.getElementById('level'),
             message: document.getElementById('message'),
             nextLevel: document.getElementById('nextLevel'),
             restartGame: document.getElementById('restartGame'),
+            playHardMode: document.getElementById('playHardMode'), // Get the new button
             legend: document.getElementById('legend'),
             timer: document.getElementById('timer'),
             timeResults: document.getElementById('timeResults')
@@ -248,25 +280,55 @@
 
         // Initialize the game
         function initGame() {
+            resetGameVariables(); // Reset all game vars
             createGrid();
             updateLegend();
             placePlayer();
             addEventListeners();
             startGhostSpawner();
             startTimer();
+            updateGameTitle(); // Set initial title
         }
-        
+
+        // Reset game state variables for new game or level
+        function resetGameVariables() {
+             game.gameOver = false;
+             game.won = false;
+             game.ghosts = [];
+             game.clown = null;
+             game.isClownActive = false;
+             game.playerMoves = 0;
+             game.nextClownSpawnMove = 40; // Reset for the first spawn
+             game.coloredCells = 0;
+
+             // Clear existing intervals
+             clearInterval(game.ghostInterval);
+             clearInterval(game.clownInterval);
+             Object.keys(game.moveIntervals).forEach(id => {
+                 clearInterval(game.moveIntervals[id]);
+             });
+             game.moveIntervals = {};
+
+             // Keep isHardMode state
+             // game.isHardMode is reset on a full restartGame
+        }
+
+        // Update the game title based on Hard Mode state
+        function updateGameTitle() {
+            elements.gameTitle.textContent = game.isHardMode ? "Green Painter Challenge! (Hard Mode)" : "Green Painter Challenge!";
+        }
+
         // Timer functions
         function startTimer() {
             stopTimer(); // Clear any existing timers
-            
+
             game.startTime = Date.now();
             game.levelStartTime = Date.now();
             game.isTimerRunning = true;
-            
+
             game.timerInterval = setInterval(updateTimer, 10); // Update every 10ms for centisecond precision
         }
-        
+
         function stopTimer() {
             if (game.timerInterval) {
                 clearInterval(game.timerInterval);
@@ -274,28 +336,28 @@
             }
             game.isTimerRunning = false;
         }
-        
+
         function updateTimer() {
             if (!game.isTimerRunning) return;
-            
+
             game.currentTime = Date.now() - game.startTime;
-            
+
             // Format time as MM:SS.CC (minutes, seconds, centiseconds)
             const totalCentiseconds = Math.floor(game.currentTime / 10);
             const centiseconds = totalCentiseconds % 100;
             const totalSeconds = Math.floor(totalCentiseconds / 100);
             const seconds = totalSeconds % 60;
             const minutes = Math.floor(totalSeconds / 60);
-            
-            elements.timer.textContent = 
+
+            elements.timer.textContent =
                 `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
         }
-        
+
         function recordLevelTime() {
             const levelTime = Date.now() - game.levelStartTime;
             game.levelTimes[game.level - 1] = levelTime;
             game.cumulativeTime = game.levelTimes.reduce((acc, time) => acc + time, 0);
-            
+
             // Format times
             const formatTime = (time) => {
                 const totalCentiseconds = Math.floor(time / 10);
@@ -303,10 +365,10 @@
                 const totalSeconds = Math.floor(totalCentiseconds / 100);
                 const seconds = totalSeconds % 60;
                 const minutes = Math.floor(totalSeconds / 60);
-                
+
                 return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
             };
-            
+
             // Display the level time and cumulative time
             elements.timeResults.innerHTML = `
                 Total Time: ${formatTime(game.cumulativeTime)}
@@ -317,8 +379,8 @@
         function createGrid() {
             elements.grid.innerHTML = '';
             game.grid = [];
-            game.coloredCells = 0;
-            
+            game.coloredCells = 0; // Reset colored cells count
+
             for (let row = 0; row < 7; row++) {
                 game.grid[row] = [];
                 for (let col = 0; col < 7; col++) {
@@ -327,14 +389,15 @@
                     cell.dataset.row = row;
                     cell.dataset.col = col;
                     cell.style.backgroundColor = colors.gray;
-                    
+
                     game.grid[row][col] = {
                         element: cell,
                         color: colors.gray,
                         hasGhost: false,
-                        hasPlayer: false
+                        hasPlayer: false,
+                        hasClown: false // Add clown property
                     };
-                    
+
                     elements.grid.appendChild(cell);
                 }
             }
@@ -343,17 +406,17 @@
         // Update the legend based on current level
         function updateLegend() {
             elements.legend.innerHTML = '';
-            
+
             // Create a single color chain based on level
             const legendItem = document.createElement('div');
             legendItem.className = 'legend-item';
-            
+
             // Start with gray
             const grayColor = document.createElement('div');
             grayColor.className = 'color-sample';
             grayColor.style.backgroundColor = colors.gray;
             legendItem.appendChild(grayColor);
-            
+
             // Add appropriate color chain based on level
             if (game.level >= 3) {
                 const arrow1 = document.createTextNode(' → ');
@@ -364,194 +427,288 @@
                 lightGreen.style.backgroundColor = colors.lightGreen;
                 legendItem.appendChild(lightGreen);
             }
-            
+
             if (game.level >= 2) {
                 const arrow2 = document.createTextNode(' → ');
                 legendItem.appendChild(arrow2);
-                
+
                 const mediumGreen = document.createElement('div');
                 mediumGreen.className = 'color-sample';
                 mediumGreen.style.backgroundColor = colors.mediumGreen;
                 legendItem.appendChild(mediumGreen);
             }
-            
+
             // All levels end with green
             const arrowFinal = document.createTextNode(' → ');
             legendItem.appendChild(arrowFinal);
-            
+
             const greenColor = document.createElement('div');
             greenColor.className = 'color-sample';
             greenColor.style.backgroundColor = colors.green;
             legendItem.appendChild(greenColor);
-            
+
             elements.legend.appendChild(legendItem);
-            
-            // Add player and ghost to legend
+
+            // Add player, ghost, and clown to legend
             const playerItem = document.createElement('div');
             playerItem.className = 'legend-item';
-            playerItem.innerHTML = '<div class="color-sample" style="display: flex; justify-content: center; align-items: center;">😀</div> Player';
+            // Use the appropriate emoji for the player in the legend based on hard mode
+            playerItem.innerHTML = `<div class="color-sample">${game.isHardMode ? '😁' : '😀'}</div> Player`;
             elements.legend.appendChild(playerItem);
-            
+
             const ghostItem = document.createElement('div');
             ghostItem.className = 'legend-item';
-            ghostItem.innerHTML = '<div class="color-sample" style="display: flex; justify-content: center; align-items: center;">👻</div> Ghost';
+            ghostItem.innerHTML = '<div class="color-sample">👻</div> Ghost';
             elements.legend.appendChild(ghostItem);
+
+            const clownItem = document.createElement('div'); // Add clown legend item
+            clownItem.className = 'legend-item';
+            clownItem.innerHTML = '<div class="color-sample">🤡</div> Clown';
+            elements.legend.appendChild(clownItem);
         }
 
         // Place the player on the grid
         function placePlayer() {
             game.player = { row: 3, col: 3 }; // Center of 7x7 grid (0-indexed)
-            updateCell(game.player.row, game.player.col, true);
+            updateCell(game.player.row, game.player.col, { isPlayer: true });
         }
 
-        // Update a cell (change color, place/remove player or ghost)
-        function updateCell(row, col, isPlayer = false, isGhost = false) {
-            const cell = game.grid[row][col];
-            
-            // Update cell emoji content
-            cell.element.textContent = '';
-            if (isPlayer) {
-                cell.hasPlayer = true;
-                cell.element.textContent = game.gameOver && !game.won ? '😵' : (game.won ? '😎' : '😀');
-            } else {
-                cell.hasPlayer = false;
-            }
-            
-            if (isGhost) {
-                cell.hasGhost = true;
-                if (!cell.hasPlayer) {
-                    cell.element.textContent = '👻';
-                }
-            } else {
-                cell.hasGhost = false;
-            }
-            
-            // Change color if player stepped on it (and game is not over)
-            if (isPlayer && !game.gameOver) {
-                const scheme = levelSchemes[game.level];
-                for (let i = scheme.length - 1; i >= 0; i--) {
-                    if (cell.color === scheme[i].from) {
-                        cell.color = scheme[i].to;
-                        cell.element.style.backgroundColor = cell.color;
-                        
-                        // If this turned green, increment our count
-                        if (cell.color === colors.green && scheme[i].from !== colors.green) {
-                            game.coloredCells++;
-                            checkWinCondition();
+        // Update a cell (change color, place/remove player, ghost, or clown)
+        function updateCell(row, col, occupants = {}) {
+             if (row < 0 || row >= 7 || col < 0 || col >= 7) return; // Boundary check
+
+             const cell = game.grid[row][col];
+
+             // Determine occupancy based on provided flags or existing state
+             cell.hasPlayer = occupants.isPlayer !== undefined ? occupants.isPlayer : cell.hasPlayer;
+             cell.hasGhost = occupants.isGhost !== undefined ? occupants.isGhost : cell.hasGhost;
+             cell.hasClown = occupants.isClown !== undefined ? occupants.isClown : cell.hasClown;
+
+             // Update cell emoji content (Clown takes priority over Ghost)
+             cell.element.textContent = '';
+             if (cell.hasClown) {
+                 cell.element.textContent = '🤡';
+             } else if (cell.hasGhost) {
+                 cell.element.textContent = '👻';
+             }
+
+             // Player overrides Clown/Ghost for display, but collision checks happen elsewhere
+             if (cell.hasPlayer) {
+                 // Use different player emoji based on game state and hard mode
+                 if (game.gameOver && !game.won) {
+                     cell.element.textContent = '😵'; // Caught by ghost
+                 } else if (game.won) {
+                      cell.element.textContent = '😎'; // Won the level
+                 } else {
+                      cell.element.textContent = game.isHardMode ? '😁' : '😀'; // Regular player
+                 }
+             }
+
+             // Change cell background color if player stepped on it (and game is not over)
+             if (occupants.isPlayer && !game.gameOver) {
+                 const previousColor = cell.color; // Store color before potential change
+
+                 if (game.isHardMode && cell.color === colors.green) {
+                    // In Hard Mode, stepping on green reverts it
+                    const reverseScheme = reverseLevelSchemes[game.level];
+                    for (const transition of reverseScheme) {
+                        if (cell.color === transition.from) {
+                             cell.color = transition.to;
+                             cell.element.style.backgroundColor = cell.color;
+                             // If it was green and now isn't, decrement coloredCells
+                             if (cell.color !== colors.green) {
+                                 game.coloredCells--;
+                             }
+                             break; // Apply only the first matching reverse transition
                         }
-                        break;
                     }
-                }
-            }
+                 } else {
+                     // Normal color transition or not in Hard Mode
+                     const scheme = levelSchemes[game.level];
+                     for (let i = scheme.length - 1; i >= 0; i--) {
+                         if (cell.color === scheme[i].from) {
+                             cell.color = scheme[i].to;
+                             cell.element.style.backgroundColor = cell.color;
+
+                             // If this turned green and wasn't before, increment our count
+                             if (cell.color === colors.green && previousColor !== colors.green) {
+                                 game.coloredCells++;
+                             }
+                             break; // Only one color transition per step
+                         }
+                     }
+                 }
+
+                  // Check win condition after potential color change
+                  checkWinCondition();
+             }
+             // Change cell background color if clown steps on it
+             else if (occupants.isClownStepped && !cell.hasPlayer && !game.gameOver) {
+                 const targetColor = colors.gray;
+                 if (cell.color !== targetColor) {
+                      const previousColor = cell.color;
+                      cell.color = targetColor;
+                      cell.element.style.backgroundColor = cell.color;
+
+                      // If the clown changed a green cell back, decrement count
+                      if (previousColor === colors.green && targetColor !== colors.green) {
+                           game.coloredCells--;
+                      }
+                 }
+             }
         }
+
 
         // Move the player
         function movePlayer(direction) {
             if (game.gameOver) return;
-            
+
             let newRow = game.player.row;
             let newCol = game.player.col;
-            
+
             switch (direction) {
-                case 'up':
-                    newRow = Math.max(0, game.player.row - 1);
-                    break;
-                case 'down':
-                    newRow = Math.min(6, game.player.row + 1);
-                    break;
-                case 'left':
-                    newCol = Math.max(0, game.player.col - 1);
-                    break;
-                case 'right':
-                    newCol = Math.min(6, game.player.col + 1);
-                    break;
+                case 'up': newRow = Math.max(0, game.player.row - 1); break;
+                case 'down': newRow = Math.min(6, game.player.row + 1); break;
+                case 'left': newCol = Math.max(0, game.player.col - 1); break;
+                case 'right': newCol = Math.min(6, game.player.col + 1); break;
             }
-            
-            // Remove player from old cell
-            updateCell(game.player.row, game.player.col, false);
-            
+
+            // Only proceed if the position actually changes
+            if (newRow === game.player.row && newCol === game.player.col) {
+                return;
+            }
+
+            // Remove player from old cell (keep ghost/clown if present)
+            updateCell(game.player.row, game.player.col, { isPlayer: false });
+
+
             // Update player position
             game.player.row = newRow;
             game.player.col = newCol;
-            
-            // Add player to new cell and check for ghost collision
+
+            // Add player to new cell and check for collisions
             const newCell = game.grid[newRow][newCol];
             if (newCell.hasGhost) {
                 gameOver(false);
+                updateCell(newRow, newCol, { isPlayer: true, isGhost: true }); // Show player caught
+                return; // Stop further processing if game over
             }
-            
-            updateCell(newRow, newCol, true);
+            if (newCell.hasClown) {
+                handleClownPlayerCollision(); // Clown handles its own despawn/transformation
+                // Player still moves onto the cell
+                updateCell(newRow, newCol, { isPlayer: true });
+            } else {
+                // No collision, just move player and update color
+                 updateCell(newRow, newCol, { isPlayer: true });
+            }
+
+
+            // Increment player move counter and check for clown spawn
+            game.playerMoves++;
+            if (!game.isClownActive && game.playerMoves >= game.nextClownSpawnMove) {
+                spawnClown(true); // Auto-spawn
+                // Set next spawn threshold
+                game.nextClownSpawnMove = game.playerMoves + game.clownSpawnCounter;
+            }
+
+            // Check win condition after potential color change (already called in updateCell)
+            // checkWinCondition();
         }
+
 
         // Check if all cells are turned green
         function checkWinCondition() {
-            if (game.coloredCells === game.totalCells) {
+            // Check only if not already won/lost to avoid repeated triggers
+            if (!game.gameOver && game.coloredCells === game.totalCells) {
                 game.won = true;
                 game.gameOver = true;
-                
+
                 // Stop the timer and record level time
                 stopTimer();
                 recordLevelTime();
-                
-                // Show win message and next level button
+
+                // Show win message
                 elements.message.textContent = "You win! All cells are colored!";
-                
+
                 // Update player emoji to cool sunglasses
-                updateCell(game.player.row, game.player.col, true);
-                
+                updateCell(game.player.row, game.player.col, { isPlayer: true });
+
                 // Show appropriate button based on level
                 if (game.level < 3) {
                     elements.nextLevel.classList.remove('hidden');
                 } else {
+                    // Completed Level 3
                     elements.message.textContent = "Congratulations! You've completed all levels!";
                     elements.restartGame.classList.remove('hidden');
+                    // Also show the Hard Mode button after completing all levels
+                    elements.playHardMode.classList.remove('hidden');
                 }
-                
-                // Stop ghost spawning
-                clearInterval(game.ghostInterval);
-                
-                // Stop all ghost movements
-                Object.keys(game.moveIntervals).forEach(id => {
-                    clearInterval(game.moveIntervals[id]);
-                });
+
+                // Stop spawning and movement
+                stopAllEnemies();
             }
+        }
+
+        // Stop ghost spawner and all ghost/clown movements
+        function stopAllEnemies() {
+            clearInterval(game.ghostInterval);
+            clearInterval(game.clownInterval); // Stop clown movement
+            game.ghostInterval = null;
+            game.clownInterval = null;
+
+            Object.keys(game.moveIntervals).forEach(id => {
+                clearInterval(game.moveIntervals[id]);
+            });
+            game.moveIntervals = {}; // Clear ghost move intervals
         }
 
         // End the game (win or lose)
         function gameOver(win) {
+            if (game.gameOver) return; // Prevent multiple game over triggers
+
             game.gameOver = true;
             game.won = win;
-            
+
             // Stop the timer
             stopTimer();
-            
+
             if (!win) {
                 elements.message.textContent = "Game Over! A ghost caught you!";
                 elements.restartGame.classList.remove('hidden');
-                
+
                 // Update player emoji to dead face
-                updateCell(game.player.row, game.player.col, true);
-                
-                // Stop ghost spawning
-                clearInterval(game.ghostInterval);
-                
-                // Stop all ghost movements
-                Object.keys(game.moveIntervals).forEach(id => {
-                    clearInterval(game.moveIntervals[id]);
-                });
+                updateCell(game.player.row, game.player.col, { isPlayer: true });
+
+                // Stop spawning and movement
+                stopAllEnemies();
+
+                 // Add event listeners for Shift key when game over and restart is shown
+                 document.addEventListener('keydown', handleShiftKey);
+                 document.addEventListener('keyup', handleShiftKey);
+
             }
+            // Win condition handling is in checkWinCondition
         }
+
+        // Handle Shift key press/release for Hard Mode button visibility
+        function handleShiftKey(event) {
+             // Only do this if the game is over and the restart button is visible
+             if (game.gameOver && !elements.restartGame.classList.contains('hidden')) {
+                 if (event.shiftKey) {
+                     elements.playHardMode.classList.remove('hidden');
+                 } else {
+                     elements.playHardMode.classList.add('hidden');
+                 }
+             }
+        }
+
 
         // Start spawning ghosts every 5 seconds
         function startGhostSpawner() {
-            // Clear any existing ghosts and intervals
-            game.ghosts = [];
+            // Clear existing ghost spawn interval
             clearInterval(game.ghostInterval);
-            Object.keys(game.moveIntervals).forEach(id => {
-                clearInterval(game.moveIntervals[id]);
-            });
-            game.moveIntervals = {};
-            
+            game.ghostInterval = null;
+
             // Start spawning ghosts
             game.ghostInterval = setInterval(() => {
                 if (!game.gameOver) {
@@ -562,108 +719,307 @@
 
         // Spawn a ghost at one of the corners
         function spawnGhost() {
-            const corners = [
-                { row: 0, col: 0 }, // Top-left (1,1 in 1-indexed)
-                { row: 0, col: 6 }, // Top-right (1,7 in 1-indexed)
-                { row: 6, col: 0 }, // Bottom-left (7,1 in 1-indexed)
-                { row: 6, col: 6 }  // Bottom-right (7,7 in 1-indexed)
-            ];
-            
-            // Shuffle corners to pick a random one
-            const shuffledCorners = [...corners].sort(() => Math.random() - 0.5);
-            
-            // Try each corner until we find one without a ghost
-            for (const corner of shuffledCorners) {
-                const cell = game.grid[corner.row][corner.col];
-                if (!cell.hasGhost && !cell.hasPlayer) {
-                    // Create a new ghost
-                    const ghostId = Date.now(); // Unique ID for the ghost
-                    const ghost = {
-                        id: ghostId,
-                        row: corner.row,
-                        col: corner.col
-                    };
-                    
-                    // Add to ghosts array
-                    game.ghosts.push(ghost);
-                    
-                    // Place ghost on grid
-                    updateCell(ghost.row, ghost.col, false, true);
-                    
-                    // Start ghost movement
-                    game.moveIntervals[ghostId] = setInterval(() => {
-                        moveGhost(ghost);
-                    }, 600);
-                    
-                    break;
-                }
-            }
-        }
+             if (game.gameOver) return;
+
+             const corners = [
+                 { row: 0, col: 0 }, { row: 0, col: 6 },
+                 { row: 6, col: 0 }, { row: 6, col: 6 }
+             ];
+
+             const availableCorners = corners.filter(corner => {
+                 const cell = game.grid[corner.row][corner.col];
+                 // Cannot spawn on player, existing ghost, or clown
+                 return !cell.hasGhost && !cell.hasPlayer && !cell.hasClown;
+             });
+
+             if (availableCorners.length === 0) return; // No available corners
+
+             // Pick a random available corner
+             const corner = availableCorners[Math.floor(Math.random() * availableCorners.length)];
+
+             // Create a new ghost
+             const ghostId = `ghost_${Date.now()}_${Math.random()}`; // More unique ID
+             const ghost = {
+                 id: ghostId,
+                 row: corner.row,
+                 col: corner.col
+             };
+
+             // Add to ghosts array
+             game.ghosts.push(ghost);
+
+             // Place ghost on grid
+             updateCell(ghost.row, ghost.col, { isGhost: true });
+
+             // Start ghost movement interval
+             game.moveIntervals[ghostId] = setInterval(() => {
+                 moveGhost(ghost);
+             }, 600);
+         }
 
         // Move a ghost towards the player
         function moveGhost(ghost) {
-            if (game.gameOver) return;
-            
-            // Remove ghost from current cell
-            updateCell(ghost.row, ghost.col, game.grid[ghost.row][ghost.col].hasPlayer, false);
-            
-            // Calculate distances in each direction
-            const moves = [
-                { dr: -1, dc: 0, direction: 'up' },
-                { dr: 1, dc: 0, direction: 'down' },
-                { dr: 0, dc: -1, direction: 'left' },
-                { dr: 0, dc: 1, direction: 'right' }
-            ];
-            
-            // Calculate possible moves and their distances to player
-            const possibleMoves = moves
-                .map(move => {
-                    const newRow = ghost.row + move.dr;
-                    const newCol = ghost.col + move.dc;
-                    
-                    // Check if the move is valid (within grid and no ghost there)
-                    if (newRow >= 0 && newRow < 7 && newCol >= 0 && newCol < 7) {
-                        const cell = game.grid[newRow][newCol];
-                        if (!cell.hasGhost) {
-                            // Calculate Manhattan distance to player
-                            const distance = Math.abs(newRow - game.player.row) + Math.abs(newCol - game.player.col);
-                            return {
-                                row: newRow,
-                                col: newCol,
-                                distance: distance,
-                                direction: move.direction
-                            };
-                        }
+             if (!ghost || game.gameOver) return; // Check if ghost exists and game is running
+
+             const currentCell = game.grid[ghost.row][ghost.col];
+
+             // Remove ghost from current cell visually (keep player/clown if present)
+             updateCell(ghost.row, ghost.col, { isGhost: false });
+
+             // Calculate possible moves (up, down, left, right)
+             const moves = [
+                 { dr: -1, dc: 0 }, { dr: 1, dc: 0 },
+                 { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
+             ];
+
+             let possibleMoves = [];
+             for (const move of moves) {
+                 const newRow = ghost.row + move.dr;
+                 const newCol = ghost.col + move.dc;
+
+                 // Check if the move is valid (within grid)
+                 if (newRow >= 0 && newRow < 7 && newCol >= 0 && newCol < 7) {
+                      const targetCell = game.grid[newRow][newCol];
+                      // Ghost can move onto an empty cell or a cell with the player
+                      // Ghost cannot move onto a cell with another ghost.
+                      // Ghost can move onto a cell with a clown (clown is drawn on top)
+                      if (!targetCell.hasGhost) {
+                           // Calculate Manhattan distance to player
+                           const distance = Math.abs(newRow - game.player.row) + Math.abs(newCol - game.player.col);
+                           possibleMoves.push({ row: newRow, col: newCol, distance: distance });
+                      }
+                 }
+             }
+
+             // If no valid moves, ghost stays put (shouldn't happen unless trapped)
+             if (possibleMoves.length === 0) {
+                  updateCell(ghost.row, ghost.col, { isGhost: true }); // Redraw ghost in same spot
+                  return;
+             }
+
+             // Sort by distance (closest to player first)
+             possibleMoves.sort((a, b) => a.distance - b.distance);
+
+             // Get the best move
+             const bestMove = possibleMoves[0];
+
+             // Update ghost position internally
+             ghost.row = bestMove.row;
+             ghost.col = bestMove.col;
+
+             // Check if ghost caught the player
+             if (ghost.row === game.player.row && ghost.col === game.player.col) {
+                 updateCell(ghost.row, ghost.col, { isPlayer: true, isGhost: true }); // Update cell state
+                 gameOver(false); // Player caught
+             } else {
+                 // Place ghost in the new cell (visually)
+                 updateCell(ghost.row, ghost.col, { isGhost: true });
+             }
+        }
+
+        // --- Clown Functions ---
+
+        // Spawn a Clown
+        function spawnClown(isAutoSpawn = false) {
+            if (game.gameOver || game.isClownActive) return; // Only one clown at a time
+
+            // Find all unoccupied cells (no player, ghost, or clown)
+            const unoccupiedCells = [];
+            for (let r = 0; r < 7; r++) {
+                for (let c = 0; c < 7; c++) {
+                    const cell = game.grid[r][c];
+                    if (!cell.hasPlayer && !cell.hasGhost && !cell.hasClown) {
+                        unoccupiedCells.push({ row: r, col: c });
                     }
-                    return null;
-                })
-                .filter(move => move !== null);
-            
-            // Sort by distance (closest to player first)
-            possibleMoves.sort((a, b) => a.distance - b.distance);
-            
-            // Get the best move (closest to player)
-            const bestMove = possibleMoves.length > 0 ? possibleMoves[0] : null;
-            
-            if (bestMove) {
-                // Update ghost position
-                ghost.row = bestMove.row;
-                ghost.col = bestMove.col;
-                
-                // Check if ghost caught the player
-                if (ghost.row === game.player.row && ghost.col === game.player.col) {
-                    updateCell(ghost.row, ghost.col, true, true);
-                    gameOver(false);
-                } else {
-                    updateCell(ghost.row, ghost.col, false, true);
                 }
             }
+
+            if (unoccupiedCells.length === 0) return; // No place to spawn
+
+            // Choose a random unoccupied cell
+            const spawnPos = unoccupiedCells[Math.floor(Math.random() * unoccupiedCells.length)];
+
+            // Create the clown object
+            const clownId = `clown_${Date.now()}`;
+            game.clown = {
+                id: clownId,
+                row: spawnPos.row,
+                col: spawnPos.col
+            };
+            game.isClownActive = true;
+
+            // Place clown on grid
+            updateCell(game.clown.row, game.clown.col, { isClown: true });
+
+            // Start clown movement
+            clearInterval(game.clownInterval); // Clear any previous interval just in case
+            game.clownInterval = setInterval(moveClown, 450); // Move every 0.45 seconds
+
+            // If this was an auto-spawn, set the next threshold (already done in movePlayer)
+            // If it was from a ghost transformation, reset the auto-spawn counter relative to current moves
+            if (!isAutoSpawn) {
+                 game.nextClownSpawnMove = game.playerMoves + game.clownSpawnCounter;
+            }
         }
+
+        // Move the Clown away from the player
+        function moveClown() {
+            if (!game.clown || game.gameOver) {
+                 clearInterval(game.clownInterval); // Stop if no clown or game over
+                 game.clownInterval = null;
+                 return;
+            }
+
+            // Check if clown reached a corner
+            const { row, col } = game.clown;
+            if ((row === 0 || row === 6) && (col === 0 || col === 6)) {
+                despawnClown();
+                return;
+            }
+
+            // Remove clown visually from current cell (leaving player/ghost if they were there)
+            updateCell(row, col, { isClown: false });
+            // Mark that the clown just stepped here for color change
+            updateCell(row, col, { isClownStepped: true });
+
+            // Calculate possible moves (up, down, left, right)
+            const moves = [
+                { dr: -1, dc: 0 }, { dr: 1, dc: 0 },
+                { dr: 0, dc: -1 }, { dr: 0, dc: 1 }
+            ];
+
+            let possibleMoves = [];
+            for (const move of moves) {
+                const newRow = row + move.dr;
+                const newCol = col + move.dc;
+
+                // Check if the move is valid (within grid)
+                if (newRow >= 0 && newRow < 7 && newCol >= 0 && newCol < 7) {
+                    // Clown can move onto any cell (player collision handled separately)
+                    // Calculate Manhattan distance to player
+                    const distance = Math.abs(newRow - game.player.row) + Math.abs(newCol - game.player.col);
+                    possibleMoves.push({ row: newRow, col: newCol, distance: distance });
+                }
+            }
+
+            if (possibleMoves.length === 0) {
+                 // No valid moves, redraw clown in same spot and do nothing else
+                 updateCell(row, col, { isClown: true });
+                 return;
+            }
+
+            // Sort by distance (farthest from player first)
+            possibleMoves.sort((a, b) => b.distance - a.distance);
+
+            // Get the best move (farthest from player)
+            const bestMove = possibleMoves[0];
+
+            // Update clown position internally
+            game.clown.row = bestMove.row;
+            game.clown.col = bestMove.col;
+
+            // Check for collision with the player *after* moving
+            if (game.clown.row === game.player.row && game.clown.col === game.clown.col) {
+                handleClownPlayerCollision();
+                // Don't draw the clown in the player's cell after collision
+            } else {
+                 // Place clown visually in the new cell
+                updateCell(game.clown.row, game.clown.col, { isClown: true });
+            }
+        }
+
+        // Handle collision between Clown and Player
+        function handleClownPlayerCollision() {
+            if (!game.clown) return;
+
+            const clownRow = game.clown.row;
+            const clownCol = game.clown.col;
+
+            // Revert 3x3 area around the clown to gray
+            for (let r = Math.max(0, clownRow - 1); r <= Math.min(6, clownRow + 1); r++) {
+                for (let c = Math.max(0, clownCol - 1); c <= Math.min(6, clownCol + 1); c++) {
+                    const cell = game.grid[r][c];
+                    if (cell.color !== colors.gray) {
+                         const previousColor = cell.color;
+                         cell.color = colors.gray;
+                         cell.element.style.backgroundColor = colors.gray;
+                         // If the cell was green and now gray, decrement the count
+                         if (previousColor === colors.green) {
+                             game.coloredCells--;
+                         }
+                    }
+                }
+            }
+
+            // 1. Despawn the current clown
+            despawnClown();
+
+            // 2. Transform a random ghost into a clown
+            if (game.ghosts.length > 0) {
+                // Select a random ghost
+                const randomIndex = Math.floor(Math.random() * game.ghosts.length);
+                const ghostToTransform = game.ghosts[randomIndex];
+
+                // Stop the chosen ghost's movement interval
+                clearInterval(game.moveIntervals[ghostToTransform.id]);
+                delete game.moveIntervals[ghostToTransform.id];
+
+                // Remove the ghost from the game state and visually
+                game.ghosts.splice(randomIndex, 1);
+                updateCell(ghostToTransform.row, ghostToTransform.col, { isGhost: false });
+
+                // Spawn a new clown (not an auto-spawn) at the ghost's location
+                // Need to temporarily set clown data for spawnClown to find the spot
+                 game.isClownActive = false; // Allow spawning
+                 spawnClown(false); // Spawn the new clown
+
+                // Correct the spawn location if spawnClown picked a random one
+                 if(game.clown && (game.clown.row !== ghostToTransform.row || game.clown.col !== ghostToTransform.col)) {
+                     // Force spawn at ghost location if possible
+                     const targetCell = game.grid[ghostToTransform.row][ghostToTransform.col];
+                     if(!targetCell.hasPlayer && !targetCell.hasClown) { // Check if target cell is valid
+                         updateCell(game.clown.row, game.clown.col, { isClown: false }); // Remove from wrongly spawned cell
+                         game.clown.row = ghostToTransform.row;
+                         game.clown.col = ghostToTransform.col;
+                         updateCell(game.clown.row, game.clown.col, { isClown: true }); // Place correctly
+                     }
+                     // If ghost location wasn't valid (e.g., player was there), let the random spawn stand.
+                 }
+
+
+            } else {
+                 // No ghosts to transform, just reset the auto-spawn counter
+                 game.nextClownSpawnMove = game.playerMoves + game.clownSpawnCounter;
+            }
+
+             // Player is already visually updated by movePlayer function
+        }
+
+
+        // Despawn the Clown
+        function despawnClown() {
+            if (!game.clown) return;
+
+            clearInterval(game.clownInterval); // Stop movement
+            game.clownInterval = null;
+
+            // Remove clown visually from its last cell
+            updateCell(game.clown.row, game.clown.col, { isClown: false });
+
+            game.clown = null;
+            game.isClownActive = false;
+
+            // Reset the auto-spawn counter relative to the current player moves
+            game.nextClownSpawnMove = game.playerMoves + game.clownSpawnCounter;
+        }
+
+
+        // --- End Clown Functions ---
 
         // Handle swipe gestures
         function handleTouchStart(e) {
             if (game.gameOver) return;
-            
+
             // Store the initial touch position
             game.touchStartX = e.touches[0].clientX;
             game.touchStartY = e.touches[0].clientY;
@@ -676,87 +1032,88 @@
 
         function handleTouchEnd(e) {
             if (game.gameOver || game.touchStartX === null || game.touchStartY === null) return;
-            
+
             // Get the final touch position
             const touchEndX = e.changedTouches[0].clientX;
             const touchEndY = e.changedTouches[0].clientY;
-            
+
             // Calculate the horizontal and vertical distance of the swipe
             const dx = touchEndX - game.touchStartX;
             const dy = touchEndY - game.touchStartY;
-            
+
             // Determine if the swipe was primarily horizontal or vertical
             // and had enough distance to be considered a swipe
             const minSwipeDistance = 30; // minimum swipe distance in pixels
-            
+
             if (Math.abs(dx) > Math.abs(dy)) {
                 // Horizontal swipe
                 if (Math.abs(dx) > minSwipeDistance) {
-                    if (dx > 0) {
-                        movePlayer('right');
-                    } else {
-                        movePlayer('left');
-                    }
+                    movePlayer(dx > 0 ? 'right' : 'left');
                 }
             } else {
                 // Vertical swipe
                 if (Math.abs(dy) > minSwipeDistance) {
-                    if (dy > 0) {
-                        movePlayer('down');
-                    } else {
-                        movePlayer('up');
-                    }
+                     movePlayer(dy > 0 ? 'down' : 'up');
                 }
             }
-            
+
             // Reset touch start coordinates
             game.touchStartX = null;
             game.touchStartY = null;
         }
 
-        // Add event listeners for keyboard, buttons, and touch
+// Add event listeners for keyboard, buttons, and touch
         function addEventListeners() {
             // Keyboard controls
             document.addEventListener('keydown', (e) => {
-                if (game.gameOver && e.key === 'Enter') {
-                    if (game.won && game.level < 3) {
-                        nextLevel();
-                    } else {
-                        restartGame();
-                    }
-                    return;
-                }
-                
-                if (!game.gameOver) {
-                    switch (e.key) {
-                        case 'ArrowUp':
-                        case 'w':
-                            movePlayer('up');
-                            e.preventDefault();
-                            break;
-                        case 'ArrowDown':
-                        case 's':
-                            movePlayer('down');
-                            e.preventDefault();
-                            break;
-                        case 'ArrowLeft':
-                        case 'a':
-                            movePlayer('left');
-                            e.preventDefault();
-                            break;
-                        case 'ArrowRight':
-                        case 'd':
-                            movePlayer('right');
-                            e.preventDefault();
-                            break;
-                    }
-                }
+                 // Handle the hidden Shift+Enter Hard Mode activation first
+                 if (e.key === 'Enter' && e.shiftKey && game.gameOver && !elements.restartGame.classList.contains('hidden')) {
+                     startHardModeGame();
+                     e.preventDefault(); // Prevent default Enter action (like clicking the focused button)
+                     return; // Stop further processing for this key press
+                 }
+
+                 // Allow Enter key for standard button actions if Shift+Enter didn't trigger Hard Mode
+                 if (e.key === 'Enter') {
+                     if (!elements.nextLevel.classList.contains('hidden')) {
+                         nextLevel();
+                         return;
+                     }
+                     if (!elements.restartGame.classList.contains('hidden')) {
+                          restartGame();
+                          return;
+                     }
+                     // This check now only applies if the Hard Mode button was made visible by
+                     // the Level 3 win state, not just by holding Shift temporarily on Game Over.
+                     if (!elements.playHardMode.classList.contains('hidden')) {
+                         startHardModeGame();
+                         return;
+                     }
+                 }
+
+                 if (!game.gameOver) {
+                     switch (e.key) {
+                         case 'ArrowUp': case 'w': movePlayer('up'); e.preventDefault(); break;
+                         case 'ArrowDown': case 's': movePlayer('down'); e.preventDefault(); break;
+                         case 'ArrowLeft': case 'a': movePlayer('left'); e.preventDefault(); break;
+                         case 'ArrowRight': case 'd': movePlayer('right'); e.preventDefault(); break;
+                     }
+                 }
             });
-            
+
+            // Add persistent listeners for Shift key to toggle Hard Mode button visibility on Game Over
+            // These were previously added/removed in gameOver, but keeping them always listening
+            // simplifies logic and has minimal performance impact. We just ensure they only
+            // *do* something when game.gameOver and restartGame is visible.
+            document.addEventListener('keydown', handleShiftKey);
+            document.addEventListener('keyup', handleShiftKey);
+
+
             // Button click events
             elements.nextLevel.addEventListener('click', nextLevel);
             elements.restartGame.addEventListener('click', restartGame);
-            
+            elements.playHardMode.addEventListener('click', startHardModeGame); // Add listener for Hard Mode button
+
             // Touch controls for the grid
             const gridContainer = document.querySelector('.grid-container');
             gridContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -766,50 +1123,85 @@
 
         // Advance to the next level
         function nextLevel() {
+            if (game.level >= 3) return; // Cannot go beyond level 3
+
             game.level++;
             elements.level.textContent = game.level;
             elements.nextLevel.classList.add('hidden');
             elements.message.textContent = ``;
-            elements.timeResults.innerHTML = '';
-            
-            // Reset game state
-            game.gameOver = false;
-            game.won = false;
-            game.ghosts = [];
-            
+            elements.timeResults.innerHTML = ''; // Clear previous level time
+            elements.restartGame.classList.add('hidden'); // Hide restart if moving to next level
+            elements.playHardMode.classList.add('hidden'); // Hide hard mode button
+
+            // Reset game state for the new level
+            resetGameVariables();
             createGrid();
-            updateLegend();
+            updateLegend(); // Update legend for potential color changes
             placePlayer();
             startGhostSpawner();
-            
-            // Reset level timer
+
+            // Reset and start level timer
             game.levelStartTime = Date.now();
-            startTimer();
+            startTimer(); // Ensure timer restarts correctly for the new level
+            updateGameTitle(); // Ensure title is correct (should be normal mode)
         }
 
-        // Restart the game from level 1
+        // Restart the game from level 1 (Normal Mode)
         function restartGame() {
             game.level = 1;
             elements.level.textContent = game.level;
             elements.restartGame.classList.add('hidden');
+            elements.nextLevel.classList.add('hidden'); // Ensure next level button is hidden
+            elements.playHardMode.classList.add('hidden'); // Hide hard mode button
             elements.message.textContent = ``;
-            elements.timeResults.innerHTML = '';
-            
-            // Reset game state
-            game.gameOver = false;
-            game.won = false;
-            game.ghosts = [];
+            elements.timeResults.innerHTML = ''; // Clear times
+
+            // Reset game state completely
             game.levelTimes = [];
             game.cumulativeTime = 0;
-            
+            game.isHardMode = false; // Ensure hard mode is off for a normal restart
+            resetGameVariables();
             createGrid();
-            updateLegend();
+            updateLegend(); // Update legend to show normal player emoji
             placePlayer();
             startGhostSpawner();
-            
-            // Reset timer
+
+            // Reset and start timer
             startTimer();
+            updateGameTitle(); // Set title back to normal
+            // Remove Shift key listeners if they were added
+            document.removeEventListener('keydown', handleShiftKey);
+            document.removeEventListener('keyup', handleShiftKey);
         }
+
+        // Start the game in Hard Mode
+        function startHardModeGame() {
+             game.level = 1; // Start Hard Mode from Level 1
+             elements.level.textContent = game.level;
+             elements.restartGame.classList.add('hidden');
+             elements.nextLevel.classList.add('hidden'); // Ensure next level button is hidden
+             elements.playHardMode.classList.add('hidden'); // Hide hard mode button
+             elements.message.textContent = ``;
+             elements.timeResults.innerHTML = ''; // Clear times
+
+             // Reset game state completely
+             game.levelTimes = [];
+             game.cumulativeTime = 0;
+             game.isHardMode = true; // Activate Hard Mode
+             resetGameVariables();
+             createGrid();
+             updateLegend(); // Update legend to show hard mode player emoji
+             placePlayer();
+             startGhostSpawner();
+
+             // Reset and start timer
+             startTimer();
+             updateGameTitle(); // Set title to Hard Mode
+             // Remove Shift key listeners if they were added
+             document.removeEventListener('keydown', handleShiftKey);
+             document.removeEventListener('keyup', handleShiftKey);
+        }
+
 
         // Initialize the game when the page loads
         window.addEventListener('load', initGame);
